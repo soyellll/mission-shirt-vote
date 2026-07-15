@@ -14,6 +14,7 @@ import Countdown from "../../components/Countdown";
 import {
   getIsPollClosed,
   POLL_CLOSED_MESSAGE,
+  VOTE_OPTIONS,
 } from "../../lib/pollConfig";
 
 type Step = "info" | "select" | "done";
@@ -32,29 +33,10 @@ type ShirtOption = {
   imageSrc: string;
 };
 
-const SHIRT_OPTIONS: ShirtOption[] = [
-  {
-    id: "shirt-01",
-    number: "01",
-    title: "일!주일!티",
-    description: "빡빡한 나의 하루에 주님을 생각해 주세요~",
-    imageSrc: "/shirt-01.jpg",
-  },
-  {
-    id: "shirt-02",
-    number: "02",
-    title: "큐티~셔츠",
-    description: "난 귀여워. 왜냐고? ↑↑↑↑↑↑↑",
-    imageSrc: "/shirt-02.jpg",
-  },
-  {
-    id: "shirt-03",
-    number: "03",
-    title: "아럽지저스",
-    description: "아럽 지저스~ 옛 아 두~♪ 아럽 지저스~ 하우 어밧 유~♫",
-    imageSrc: "/shirt-03.jpg",
-  },
-];
+const SHIRT_OPTIONS: ShirtOption[] = VOTE_OPTIONS.map((option) => ({
+  ...option,
+  imageSrc: `/${option.id}.jpg`,
+}));
 
 const onlyNumbers = (value: string) => {
   return value.replace(/[^0-9]/g, "");
@@ -364,7 +346,7 @@ export default function VotePage() {
             <p className="mt-10 text-[17px] font-bold leading-9 tracking-[-0.04em] text-[#000181]/72">
               결과를 집계 중이니
               <br />
-              선교사님! 잠시만 기다려주세요. 곧 발표됩니다!!
+              선교사님들 잠시만 기다려주세요.
             </p>
 
             <section className="mt-12">
@@ -389,10 +371,10 @@ export default function VotePage() {
         <section className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-md flex-col">
           <header className="flex items-start justify-between border-b-2 border-[#000181] pb-4">
             <p className="font-latin text-sm font-bold leading-none tracking-[-0.04em]">
-              Summer Mission
+              Vote Complete
             </p>
             <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
-              1청년함대
+              001
             </p>
           </header>
 
@@ -457,7 +439,7 @@ export default function VotePage() {
           </Link>
 
           <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
-            단기선교 티셔츠 투표
+            Mission Vote
           </p>
         </header>
 
@@ -580,7 +562,7 @@ export default function VotePage() {
         {step === "select" && (
           <section className="pt-10">
             <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
-              함대 프로듀서님!
+              Final Pick
             </p>
 
             <h1 className="mt-8 text-[46px] font-black leading-[1.2] tracking-[-0.08em] text-[#000181]">
@@ -607,7 +589,7 @@ export default function VotePage() {
                   <div className="grid grid-cols-[1fr_92px] border-b-2 border-[#000181]">
                     <div className="px-4 py-5">
                       <p className="font-latin text-xs font-bold uppercase tracking-[0.18em] text-[#006EE9]">
-                        후보 티셔츠
+                        Candidate
                       </p>
 
                       <h2 className="mt-4 text-[34px] font-black leading-[1.15] tracking-[-0.07em] text-[#000181]">
@@ -639,7 +621,7 @@ export default function VotePage() {
                       onClick={() => openConfirmModal(option.id)}
                       className="mt-5 block w-full border-2 border-[#000181] bg-[#000181] px-5 py-5 text-center text-base font-black tracking-[-0.04em] text-[#FDFEFF] transition hover:bg-[#006EE9] active:translate-x-1 active:translate-y-1 disabled:opacity-50"
                     >
-                      PICK ME !!
+                      이 티셔츠에게 투표하기
                     </button>
                   </div>
                 </article>

@@ -439,7 +439,7 @@ export default function VotePage() {
           </Link>
 
           <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
-            Mission Vote
+            1청년함대
           </p>
         </header>
 
@@ -450,7 +450,7 @@ export default function VotePage() {
         {step === "info" && (
           <section className="pt-10">
             <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
-              Voter Check
+              Summer Mission
             </p>
 
             <h1 className="mt-8 text-[48px] font-black leading-[1.2] tracking-[-0.08em] text-[#000181]">
@@ -562,7 +562,7 @@ export default function VotePage() {
         {step === "select" && (
           <section className="pt-10">
             <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
-              Final Pick
+              함대 프로듀서님!!
             </p>
 
             <h1 className="mt-8 text-[46px] font-black leading-[1.2] tracking-[-0.08em] text-[#000181]">
@@ -621,7 +621,7 @@ export default function VotePage() {
                       onClick={() => openConfirmModal(option.id)}
                       className="mt-5 block w-full border-2 border-[#000181] bg-[#000181] px-5 py-5 text-center text-base font-black tracking-[-0.04em] text-[#FDFEFF] transition hover:bg-[#006EE9] active:translate-x-1 active:translate-y-1 disabled:opacity-50"
                     >
-                      이 티셔츠에게 투표하기
+                      PICK ME !!
                     </button>
                   </div>
                 </article>

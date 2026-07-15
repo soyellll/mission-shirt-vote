@@ -364,7 +364,7 @@ export default function VotePage() {
             <p className="mt-10 text-[17px] font-bold leading-9 tracking-[-0.04em] text-[#000181]/72">
               결과를 집계 중이니
               <br />
-              선교사님들 잠시만 기다려주세요.
+              선교사님! 잠시만 기다려주세요. 곧 발표됩니다!!
             </p>
 
             <section className="mt-12">

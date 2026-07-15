@@ -10,13 +10,13 @@ export const VOTE_OPTIONS = [
     id: "shirt-01",
     number: "01",
     title: "일!주일!티",
-    description: "빡빡한 나의 하루에 주님을 생각해 주세요~",
+    description: "나의 하루가 정신없이 흘러갈지라도 주님을 한 번 생각해 보아요~",
   },
   {
     id: "shirt-02",
     number: "02",
     title: "큐티~셔츠",
-    description: "난 귀여워. 왜냐고? ↑↑↑↑↑↑↑",
+    description: "있잖아, 난 귀여워. 왜냐고? ↑↑↑↑↑↑↑",
   },
   {
     id: "shirt-03",

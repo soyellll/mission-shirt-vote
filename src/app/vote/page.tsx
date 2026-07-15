@@ -371,16 +371,16 @@ export default function VotePage() {
         <section className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-md flex-col">
           <header className="flex items-start justify-between border-b-2 border-[#000181] pb-4">
             <p className="font-latin text-sm font-bold leading-none tracking-[-0.04em]">
-              Vote Complete
+              Summer Mission
             </p>
             <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
-              001
+              여름 단기선교 단체 티셔츠
             </p>
           </header>
 
           <section className="flex flex-1 flex-col justify-center">
             <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
-              Complete
+              1
             </p>
 
             <h1 className="mt-8 text-[56px] font-black leading-[1.18] tracking-[-0.08em] text-[#000181]">

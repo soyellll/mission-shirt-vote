@@ -24,7 +24,7 @@ const onlyNumbers = (value: string) => {
 };
 
 const cleanName = (value: string) => {
-  return value.trim().slice(0, 30);
+  return String(value).trim();
 };
 
 const normalizeVoter = (body: {
@@ -62,8 +62,8 @@ const validateVoter = (payload: ReturnType<typeof normalizeVoter>) => {
     return "이름을 입력해주세요.";
   }
 
-  if (payload.name.length > 30) {
-    return "이름은 30자 이내로 입력해주세요.";
+  if (payload.name.length > 8) {
+    return "이름은 8자 이내로 입력해주세요.";
   }
 
   if (!/^[0-9]{4}$/.test(payload.phoneLast4)) {
@@ -113,14 +113,17 @@ const findExistingVote = async (payload: ReturnType<typeof normalizeVoter>) => {
     .eq("generation", payload.generation)
     .eq("voter_name", payload.name)
     .eq("phone_last4", payload.phoneLast4)
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(1);
 
   if (error) {
     console.error("Existing vote lookup error:", error);
     throw new Error("기존 투표 정보를 확인하지 못했습니다.");
   }
 
-  return makeExistingVoteInfo((data ?? null) as ExistingVoteRow | null);
+  const row = ((data ?? [])[0] ?? null) as ExistingVoteRow | null;
+
+  return makeExistingVoteInfo(row);
 };
 
 export async function GET(request: Request) {

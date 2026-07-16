@@ -366,10 +366,10 @@ export default function AdminPage() {
                         </p>
                       </div>
 
-                      <div className="mt-6 border-t-2 border-[#000181] pt-4">
-                        <p className="font-latin text-xs font-bold uppercase tracking-[0.18em] text-[#006EE9]">
-                          Voters
-                        </p>
+                      <details className="mt-5 border-t-2 border-[#000181] pt-4">
+                        <summary className="cursor-pointer list-none text-sm font-black leading-7 tracking-[-0.035em] text-[#000181]">
+                          투표자 보기 / {option.voters.length}명
+                        </summary>
 
                         {option.voters.length === 0 ? (
                           <p className="mt-4 text-sm font-bold leading-7 tracking-[-0.035em] text-[#000181]/45">
@@ -380,18 +380,18 @@ export default function AdminPage() {
                             {option.voters.map((voter, voterIndex) => (
                               <div
                                 key={voter.id}
-                                className="grid grid-cols-[48px_1fr] border-b-2 border-[#000181] last:border-b-0"
+                                className="grid grid-cols-[44px_1fr] border-b-2 border-[#000181] last:border-b-0"
                               >
-                                <div className="flex min-h-14 items-center justify-center border-r-2 border-[#000181] bg-[#FDFEFF] font-latin text-xs font-bold">
+                                <div className="flex min-h-12 items-center justify-center border-r-2 border-[#000181] font-latin text-xs font-bold">
                                   {String(voterIndex + 1).padStart(2, "0")}
                                 </div>
 
-                                <div className="px-4 py-3">
-                                  <p className="text-sm font-black leading-6 tracking-[-0.035em] text-[#000181]">
-                                    {voter.generation}기 / {voter.name} / 뒷자리{" "}
+                                <div className="px-3 py-2">
+                                  <p className="text-xs font-black leading-5 tracking-[-0.035em] text-[#000181]">
+                                    {voter.generation}기 / {voter.name} /{" "}
                                     {voter.phoneLast4}
                                   </p>
-                                  <p className="mt-1 font-latin text-xs font-bold tracking-[-0.02em] text-[#000181]/45">
+                                  <p className="mt-1 font-latin text-[11px] font-bold tracking-[-0.02em] text-[#000181]/45">
                                     {formatDateTime(voter.createdAt)}
                                   </p>
                                 </div>
@@ -399,7 +399,7 @@ export default function AdminPage() {
                             ))}
                           </div>
                         )}
-                      </div>
+                      </details>
                     </div>
                   </article>
                 ))}

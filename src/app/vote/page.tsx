@@ -50,7 +50,7 @@ const onlyNumbers = (value: string) => {
 };
 
 const cleanName = (value: string) => {
-  return value.trim().slice(0, 30);
+  return value.trim();
 };
 
 const normalizeForm = (form: VoterInfo): VoterInfo => {
@@ -76,18 +76,24 @@ function CandidateImage({
   src,
   alt,
   number,
+  compact = false,
 }: {
   src: string;
   alt: string;
   number: string;
+  compact?: boolean;
 }) {
   const [hasError, setHasError] = useState(false);
 
+  const heightClass = compact ? "h-48" : "h-72";
+
   if (hasError) {
     return (
-      <div className="grid h-72 border-2 border-[#000181] bg-[#FDFEFF] p-5">
+      <div
+        className={`grid ${heightClass} border-2 border-[#000181] bg-[#FDFEFF] p-5`}
+      >
         <div className="flex flex-col justify-between">
-          <p className="font-latin text-[72px] font-bold leading-none tracking-[-0.08em] text-[#006EE9]">
+          <p className="font-latin text-[56px] font-bold leading-none tracking-[-0.08em] text-[#006EE9]">
             {number}
           </p>
 
@@ -105,7 +111,7 @@ function CandidateImage({
   }
 
   return (
-    <div className="h-72 border-2 border-[#000181] bg-[#FDFEFF]">
+    <div className={`${heightClass} border-2 border-[#000181] bg-[#FDFEFF]`}>
       <img
         src={src}
         alt={alt}
@@ -162,8 +168,8 @@ export default function VotePage() {
       return "이름을 입력해주세요.";
     }
 
-    if (values.name.length > 10) {
-      return "이름은 10자 이내로 입력해주세요.";
+    if (values.name.length > 8) {
+      return "이름은 8자 이내로 입력해주세요.";
     }
 
     if (!/^[0-9]{4}$/.test(values.phoneLast4)) {
@@ -428,7 +434,7 @@ export default function VotePage() {
   if (step === "alreadyVoted") {
     return (
       <main className="min-h-screen bg-[#FDFEFF] px-5 py-5 text-[#000181]">
-        <section className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-md flex-col">
+        <section className="mx-auto max-w-md">
           <header className="flex items-start justify-between border-b-2 border-[#000181] pb-4">
             <Link
               href="/"
@@ -442,41 +448,32 @@ export default function VotePage() {
             </p>
           </header>
 
-          <section className="flex flex-1 flex-col justify-center">
+          <section className="pt-10">
             <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
               Vote Checked
             </p>
 
-            <h1 className="mt-8 text-[54px] font-black leading-[1.18] tracking-[-0.08em] text-[#000181]">
+            <h1 className="mt-8 text-[52px] font-black leading-[1.18] tracking-[-0.08em] text-[#000181]">
               이미 투표가
               <br />
               완료되었습니다.
             </h1>
 
-            <p className="mt-10 text-[17px] font-bold leading-9 tracking-[-0.04em] text-[#000181]/72">
-              입력하신 정보로는
+            <p className="mt-9 text-[16px] font-bold leading-8 tracking-[-0.04em] text-[#000181]/72">
+              아래에서 전체 티셔츠 후보를 다시 확인하고,
               <br />
-              한 번의 투표가 이미 기록되어 있어요.
+              내가 선택한 티셔츠도 함께 볼 수 있어요.
             </p>
 
             {existingVoteInfo && (
-              <div className="mt-12 border-2 border-[#000181]">
+              <div className="mt-10 border-2 border-[#000181]">
                 <div className="grid grid-cols-[92px_1fr] border-b-2 border-[#000181]">
                   <div className="flex min-h-16 items-center border-r-2 border-[#000181] bg-[#D0FFA4] px-4 font-latin text-sm font-bold">
-                    Pick
+                    My Pick
                   </div>
 
                   <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
-                    후보 {existingVoteInfo.optionNumber}번
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[92px_1fr] border-b-2 border-[#000181]">
-                  <div className="flex min-h-16 items-center border-r-2 border-[#000181] px-4 font-latin text-sm font-bold">
-                    Shirt
-                  </div>
-
-                  <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
+                    후보 {existingVoteInfo.optionNumber}번 /{" "}
                     {existingVoteInfo.optionTitle}
                   </div>
                 </div>
@@ -495,31 +492,95 @@ export default function VotePage() {
               </div>
             )}
 
-            <div className="mt-8 border-y-2 border-[#000181] py-4">
+            <section className="mt-12">
+              <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
+                All Candidates
+              </p>
+
+              <div className="mt-5 space-y-6">
+                {SHIRT_OPTIONS.map((option) => {
+                  const isPicked = existingVoteInfo?.optionId === option.id;
+
+                  return (
+                    <article
+                      key={option.id}
+                      className={[
+                        "border-2 border-[#000181]",
+                        isPicked ? "bg-[#D0FFA4]" : "bg-[#FDFEFF]",
+                      ].join(" ")}
+                    >
+                      <div className="grid grid-cols-[1fr_82px] border-b-2 border-[#000181]">
+                        <div className="px-4 py-4">
+                          <p className="font-latin text-xs font-bold uppercase tracking-[0.18em] text-[#006EE9]">
+                            Candidate
+                          </p>
+
+                          <h2 className="mt-3 text-[28px] font-black leading-[1.15] tracking-[-0.07em] text-[#000181]">
+                            {option.title}
+                          </h2>
+                        </div>
+
+                        <div
+                          className={[
+                            "grid place-items-center border-l-2 border-[#000181]",
+                            isPicked ? "bg-[#000181]" : "bg-[#006EE9]",
+                          ].join(" ")}
+                        >
+                          <p className="font-latin text-[36px] font-bold leading-none tracking-[-0.08em] text-[#FDFEFF]">
+                            {option.number}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="p-4">
+                        {isPicked && (
+                          <div className="mb-4 border-2 border-[#000181] bg-[#FDFEFF] px-4 py-3 text-center text-sm font-black tracking-[-0.035em] text-[#000181]">
+                            내가 투표한 티셔츠
+                          </div>
+                        )}
+
+                        <CandidateImage
+                          src={option.imageSrc}
+                          alt={option.title}
+                          number={option.number}
+                          compact
+                        />
+
+                        <p className="mt-4 text-sm font-bold leading-8 tracking-[-0.035em] text-[#000181]/72">
+                          {option.description}
+                        </p>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+
+            <div className="mt-10 border-y-2 border-[#000181] py-4">
               <p className="text-sm font-bold leading-8 tracking-[-0.035em] text-[#000181]/70">
                 본 투표는 1인 1표만 인정됩니다.
                 <br />
                 입력 정보가 잘못되었다면 담당자에게 문의해주세요.
               </p>
             </div>
+
+            <div className="mt-8 grid grid-cols-2 border-2 border-[#000181]">
+              <button
+                type="button"
+                onClick={resetToInfo}
+                className="min-h-16 border-r-2 border-[#000181] bg-[#FDFEFF] text-sm font-black tracking-[-0.035em] text-[#000181] transition hover:bg-[#D0FFA4]"
+              >
+                정보 다시 입력
+              </button>
+
+              <Link
+                href="/"
+                className="flex min-h-16 items-center justify-center bg-[#006EE9] text-sm font-black tracking-[-0.035em] text-[#FDFEFF] transition hover:bg-[#000181]"
+              >
+                처음 화면으로
+              </Link>
+            </div>
           </section>
-
-          <div className="grid grid-cols-2 border-2 border-[#000181]">
-            <button
-              type="button"
-              onClick={resetToInfo}
-              className="min-h-16 border-r-2 border-[#000181] bg-[#FDFEFF] text-sm font-black tracking-[-0.035em] text-[#000181] transition hover:bg-[#D0FFA4]"
-            >
-              정보 다시 입력
-            </button>
-
-            <Link
-              href="/"
-              className="flex min-h-16 items-center justify-center bg-[#006EE9] text-sm font-black tracking-[-0.035em] text-[#FDFEFF] transition hover:bg-[#000181]"
-            >
-              처음 화면으로
-            </Link>
-          </div>
         </section>
       </main>
     );
@@ -666,7 +727,7 @@ export default function VotePage() {
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    maxLength={10}
+                    maxLength={8}
                     className="min-h-20 w-full bg-[#FDFEFF] px-4 text-2xl font-black tracking-[-0.05em] text-[#000181] outline-none placeholder:text-[#000181]/25"
                   />
                 </div>

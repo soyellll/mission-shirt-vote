@@ -3,13 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CompositionEvent,
-  type FormEvent,
-} from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Countdown from "../../components/Countdown";
 import {
   getIsPollClosed,
@@ -42,12 +36,8 @@ const onlyNumbers = (value: string) => {
   return value.replace(/[^0-9]/g, "");
 };
 
-const onlyLetters = (value: string) => {
-  return value.replace(/[^가-힣a-zA-Z]/g, "");
-};
-
 const cleanName = (value: string) => {
-  return onlyLetters(value).slice(0, 20);
+  return value.trim().slice(0, 30);
 };
 
 const normalizeForm = (form: VoterInfo): VoterInfo => {
@@ -105,7 +95,6 @@ function CandidateImage({
 export default function VotePage() {
   const infoLockRef = useRef(false);
   const voteLockRef = useRef(false);
-  const isComposingNameRef = useRef(false);
 
   const [step, setStep] = useState<Step>("info");
 
@@ -142,8 +131,12 @@ export default function VotePage() {
       return "기수는 숫자 2자리로 입력해주세요. 예: 00";
     }
 
-    if (!/^[가-힣a-zA-Z]{2,20}$/.test(values.name)) {
-      return "이름은 공백 없이 한글 또는 영문 2글자 이상으로 입력해주세요.";
+    if (values.name.length < 1) {
+      return "이름을 입력해주세요.";
+    }
+
+    if (values.name.length > 30) {
+      return "이름은 30자 이내로 입력해주세요.";
     }
 
     if (!/^[0-9]{4}$/.test(values.phoneLast4)) {
@@ -163,41 +156,9 @@ export default function VotePage() {
   };
 
   const handleNameChange = (value: string) => {
-    if (isComposingNameRef.current) {
-      setForm((prev) => ({
-        ...prev,
-        name: value,
-      }));
-      return;
-    }
-
     setForm((prev) => ({
       ...prev,
-      name: cleanName(value),
-    }));
-  };
-
-  const handleNameCompositionStart = () => {
-    isComposingNameRef.current = true;
-  };
-
-  const handleNameCompositionEnd = (
-    event: CompositionEvent<HTMLInputElement>,
-  ) => {
-    const value = event.currentTarget.value;
-
-    isComposingNameRef.current = false;
-
-    setForm((prev) => ({
-      ...prev,
-      name: cleanName(value),
-    }));
-  };
-
-  const handleNameBlur = (value: string) => {
-    setForm((prev) => ({
-      ...prev,
-      name: cleanName(value),
+      name: value,
     }));
   };
 
@@ -501,12 +462,12 @@ export default function VotePage() {
                     type="text"
                     value={form.name}
                     onChange={(event) => handleNameChange(event.target.value)}
-                    onCompositionStart={handleNameCompositionStart}
-                    onCompositionEnd={handleNameCompositionEnd}
-                    onBlur={(event) => handleNameBlur(event.target.value)}
                     placeholder="홍길동"
-                    autoComplete="off"
-                    maxLength={20}
+                    autoComplete="name"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    maxLength={30}
                     className="min-h-20 w-full bg-[#FDFEFF] px-4 text-2xl font-black tracking-[-0.05em] text-[#000181] outline-none placeholder:text-[#000181]/25"
                   />
                 </div>

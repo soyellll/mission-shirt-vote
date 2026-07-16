@@ -17,12 +17,8 @@ const onlyNumbers = (value: string) => {
   return value.replace(/[^0-9]/g, "");
 };
 
-const onlyLetters = (value: string) => {
-  return value.replace(/[^가-힣a-zA-Z]/g, "");
-};
-
 const cleanName = (value: string) => {
-  return onlyLetters(value).slice(0, 20);
+  return value.trim().slice(0, 30);
 };
 
 const normalizePayload = (body: VoteRequestBody) => {
@@ -44,8 +40,12 @@ const validatePayload = (payload: ReturnType<typeof normalizePayload>) => {
     return "기수는 숫자 2자리로 입력해주세요.";
   }
 
-  if (!/^[가-힣a-zA-Z]{2,20}$/.test(payload.name)) {
-    return "이름은 한글 또는 영문 2글자 이상으로 입력해주세요.";
+  if (payload.name.length < 1) {
+    return "이름을 입력해주세요.";
+  }
+
+  if (payload.name.length > 30) {
+    return "이름은 30자 이내로 입력해주세요.";
   }
 
   if (!/^[0-9]{4}$/.test(payload.phoneLast4)) {
@@ -88,10 +88,7 @@ export async function POST(request: Request) {
   const validationMessage = validatePayload(payload);
 
   if (validationMessage) {
-    return NextResponse.json(
-      { message: validationMessage },
-      { status: 400 },
-    );
+    return NextResponse.json({ message: validationMessage }, { status: 400 });
   }
 
   const { error } = await supabaseAdmin.from("votes").insert({

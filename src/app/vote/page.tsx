@@ -11,7 +11,7 @@ import {
   VOTE_OPTIONS,
 } from "../../lib/pollConfig";
 
-type Step = "info" | "select" | "done";
+type Step = "info" | "select" | "done" | "alreadyVoted";
 
 type VoterInfo = {
   generation: string;
@@ -25,6 +25,19 @@ type ShirtOption = {
   title: string;
   description: string;
   imageSrc: string;
+};
+
+type ExistingVoteInfo = {
+  optionId: string;
+  optionNumber: string;
+  optionTitle: string;
+  votedAt?: string | null;
+};
+
+type VoteCheckResponse = {
+  hasVoted?: boolean;
+  message?: string;
+  existingVote?: ExistingVoteInfo | null;
 };
 
 const SHIRT_OPTIONS: ShirtOption[] = VOTE_OPTIONS.map((option) => ({
@@ -46,6 +59,17 @@ const normalizeForm = (form: VoterInfo): VoterInfo => {
     name: cleanName(form.name),
     phoneLast4: onlyNumbers(form.phoneLast4).slice(0, 4),
   };
+};
+
+const formatKoreanDateTime = (isoDate?: string | null) => {
+  if (!isoDate) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(isoDate));
 };
 
 function CandidateImage({
@@ -106,6 +130,9 @@ export default function VotePage() {
 
   const [errorMessage, setErrorMessage] = useState("");
   const [submitErrorMessage, setSubmitErrorMessage] = useState("");
+  const [existingVoteInfo, setExistingVoteInfo] =
+    useState<ExistingVoteInfo | null>(null);
+
   const [selectedOptionId, setSelectedOptionId] = useState("");
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [isGoingNext, setIsGoingNext] = useState(false);
@@ -135,8 +162,8 @@ export default function VotePage() {
       return "이름을 입력해주세요.";
     }
 
-    if (values.name.length > 30) {
-      return "이름은 30자 이내로 입력해주세요.";
+    if (values.name.length > 10) {
+      return "이름은 10자 이내로 입력해주세요.";
     }
 
     if (!/^[0-9]{4}$/.test(values.phoneLast4)) {
@@ -144,6 +171,45 @@ export default function VotePage() {
     }
 
     return "";
+  };
+
+  const checkExistingVote = async (values: VoterInfo) => {
+    const params = new URLSearchParams({
+      generation: values.generation,
+      name: values.name,
+      phoneLast4: values.phoneLast4,
+    });
+
+    const response = await fetch(`/api/votes?${params.toString()}`, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    const result = (await response.json().catch(() => null)) as
+      | VoteCheckResponse
+      | null;
+
+    if (!response.ok) {
+      throw new Error(
+        result?.message ?? "기존 투표 정보를 확인하지 못했습니다.",
+      );
+    }
+
+    return result;
+  };
+
+  const resetToInfo = () => {
+    infoLockRef.current = false;
+    voteLockRef.current = false;
+
+    setStep("info");
+    setErrorMessage("");
+    setSubmitErrorMessage("");
+    setExistingVoteInfo(null);
+    setSelectedOptionId("");
+    setIsConfirmOpen(false);
+    setIsGoingNext(false);
+    setIsSubmittingVote(false);
   };
 
   const handleGenerationChange = (value: string) => {
@@ -171,7 +237,7 @@ export default function VotePage() {
     }));
   };
 
-  const handleInfoSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleInfoSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (infoLockRef.current) {
@@ -185,6 +251,7 @@ export default function VotePage() {
 
     infoLockRef.current = true;
     setIsGoingNext(true);
+    setExistingVoteInfo(null);
 
     const normalizedForm = normalizeForm(form);
     const validationMessage = validateForm(normalizedForm);
@@ -198,8 +265,29 @@ export default function VotePage() {
       return;
     }
 
-    setErrorMessage("");
-    setStep("select");
+    try {
+      const checkResult = await checkExistingVote(normalizedForm);
+
+      if (checkResult?.hasVoted && checkResult.existingVote) {
+        setExistingVoteInfo(checkResult.existingVote);
+        setErrorMessage("");
+        setStep("alreadyVoted");
+        return;
+      }
+
+      setErrorMessage("");
+      setStep("select");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "기존 투표 정보를 확인하지 못했습니다.";
+
+      setErrorMessage(message);
+    } finally {
+      setIsGoingNext(false);
+      infoLockRef.current = false;
+    }
   };
 
   const openConfirmModal = (optionId: string) => {
@@ -213,6 +301,7 @@ export default function VotePage() {
     }
 
     setSubmitErrorMessage("");
+    setExistingVoteInfo(null);
     setSelectedOptionId(optionId);
     setIsConfirmOpen(true);
   };
@@ -225,6 +314,7 @@ export default function VotePage() {
     voteLockRef.current = true;
     setIsSubmittingVote(true);
     setSubmitErrorMessage("");
+    setExistingVoteInfo(null);
 
     try {
       if (getIsPollClosed()) {
@@ -246,11 +336,20 @@ export default function VotePage() {
         }),
       });
 
-      const result = (await response.json().catch(() => null)) as {
-        message?: string;
-      } | null;
+      const result = (await response.json().catch(() => null)) as
+        | VoteCheckResponse
+        | null;
 
       if (!response.ok) {
+        if (response.status === 409 && result?.existingVote) {
+          setExistingVoteInfo(result.existingVote);
+          setIsConfirmOpen(false);
+          setIsSubmittingVote(false);
+          voteLockRef.current = false;
+          setStep("alreadyVoted");
+          return;
+        }
+
         throw new Error(
           result?.message ??
             "투표 저장 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.",
@@ -321,6 +420,106 @@ export default function VotePage() {
           >
             처음 화면으로
           </Link>
+        </section>
+      </main>
+    );
+  }
+
+  if (step === "alreadyVoted") {
+    return (
+      <main className="min-h-screen bg-[#FDFEFF] px-5 py-5 text-[#000181]">
+        <section className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-md flex-col">
+          <header className="flex items-start justify-between border-b-2 border-[#000181] pb-4">
+            <Link
+              href="/"
+              className="font-latin text-sm font-bold leading-none tracking-[-0.04em]"
+            >
+              ← Home
+            </Link>
+
+            <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
+              Already Voted
+            </p>
+          </header>
+
+          <section className="flex flex-1 flex-col justify-center">
+            <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
+              Vote Checked
+            </p>
+
+            <h1 className="mt-8 text-[54px] font-black leading-[1.18] tracking-[-0.08em] text-[#000181]">
+              이미 투표가
+              <br />
+              완료되었습니다.
+            </h1>
+
+            <p className="mt-10 text-[17px] font-bold leading-9 tracking-[-0.04em] text-[#000181]/72">
+              입력하신 정보로는
+              <br />
+              한 번의 투표가 이미 기록되어 있어요.
+            </p>
+
+            {existingVoteInfo && (
+              <div className="mt-12 border-2 border-[#000181]">
+                <div className="grid grid-cols-[92px_1fr] border-b-2 border-[#000181]">
+                  <div className="flex min-h-16 items-center border-r-2 border-[#000181] bg-[#D0FFA4] px-4 font-latin text-sm font-bold">
+                    Pick
+                  </div>
+
+                  <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
+                    후보 {existingVoteInfo.optionNumber}번
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[92px_1fr] border-b-2 border-[#000181]">
+                  <div className="flex min-h-16 items-center border-r-2 border-[#000181] px-4 font-latin text-sm font-bold">
+                    Shirt
+                  </div>
+
+                  <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
+                    {existingVoteInfo.optionTitle}
+                  </div>
+                </div>
+
+                {existingVoteInfo.votedAt && (
+                  <div className="grid grid-cols-[92px_1fr]">
+                    <div className="flex min-h-16 items-center border-r-2 border-[#000181] px-4 font-latin text-sm font-bold">
+                      Time
+                    </div>
+
+                    <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
+                      {formatKoreanDateTime(existingVoteInfo.votedAt)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-8 border-y-2 border-[#000181] py-4">
+              <p className="text-sm font-bold leading-8 tracking-[-0.035em] text-[#000181]/70">
+                본 투표는 1인 1표만 인정됩니다.
+                <br />
+                입력 정보가 잘못되었다면 담당자에게 문의해주세요.
+              </p>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-2 border-2 border-[#000181]">
+            <button
+              type="button"
+              onClick={resetToInfo}
+              className="min-h-16 border-r-2 border-[#000181] bg-[#FDFEFF] text-sm font-black tracking-[-0.035em] text-[#000181] transition hover:bg-[#D0FFA4]"
+            >
+              정보 다시 입력
+            </button>
+
+            <Link
+              href="/"
+              className="flex min-h-16 items-center justify-center bg-[#006EE9] text-sm font-black tracking-[-0.035em] text-[#FDFEFF] transition hover:bg-[#000181]"
+            >
+              처음 화면으로
+            </Link>
+          </div>
         </section>
       </main>
     );
@@ -467,7 +666,7 @@ export default function VotePage() {
                     autoCorrect="off"
                     autoCapitalize="off"
                     spellCheck={false}
-                    maxLength={30}
+                    maxLength={10}
                     className="min-h-20 w-full bg-[#FDFEFF] px-4 text-2xl font-black tracking-[-0.05em] text-[#000181] outline-none placeholder:text-[#000181]/25"
                   />
                 </div>

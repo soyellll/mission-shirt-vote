@@ -11,6 +11,9 @@ export const dynamic = "force-dynamic";
 
 type VoteRow = {
   id: string;
+  generation: string;
+  voter_name: string;
+  phone_last4: string;
   option_id: string;
   is_invalid: boolean;
   created_at: string;
@@ -41,7 +44,9 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("votes")
-    .select("id, option_id, is_invalid, created_at")
+    .select(
+      "id, generation, voter_name, phone_last4, option_id, is_invalid, created_at",
+    )
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -59,9 +64,8 @@ export async function GET(request: Request) {
   const totalValidVotes = validRows.length;
 
   const options = VOTE_OPTIONS.map((option) => {
-    const voteCount = validRows.filter(
-      (row) => row.option_id === option.id,
-    ).length;
+    const optionRows = validRows.filter((row) => row.option_id === option.id);
+    const voteCount = optionRows.length;
 
     const percent =
       totalValidVotes === 0
@@ -72,6 +76,13 @@ export async function GET(request: Request) {
       ...option,
       voteCount,
       percent,
+      voters: optionRows.map((row) => ({
+        id: row.id,
+        generation: row.generation,
+        name: row.voter_name,
+        phoneLast4: row.phone_last4,
+        createdAt: row.created_at,
+      })),
     };
   });
 

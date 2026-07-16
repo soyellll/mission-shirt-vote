@@ -3,6 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 
+type AdminVoter = {
+  id: string;
+  generation: string;
+  name: string;
+  phoneLast4: string;
+  createdAt: string;
+};
+
 type AdminOption = {
   id: string;
   number: string;
@@ -10,6 +18,7 @@ type AdminOption = {
   description: string;
   voteCount: number;
   percent: number;
+  voters: AdminVoter[];
 };
 
 type AdminSummary = {
@@ -27,6 +36,15 @@ const formatTime = (isoDate: string) => {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+  }).format(new Date(isoDate));
+};
+
+const formatDateTime = (isoDate: string) => {
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(new Date(isoDate));
 };
 
@@ -347,6 +365,41 @@ export default function AdminPage() {
                           {option.percent}%
                         </p>
                       </div>
+
+                      <div className="mt-6 border-t-2 border-[#000181] pt-4">
+                        <p className="font-latin text-xs font-bold uppercase tracking-[0.18em] text-[#006EE9]">
+                          Voters
+                        </p>
+
+                        {option.voters.length === 0 ? (
+                          <p className="mt-4 text-sm font-bold leading-7 tracking-[-0.035em] text-[#000181]/45">
+                            아직 이 후보에 투표한 사람이 없습니다.
+                          </p>
+                        ) : (
+                          <div className="mt-4 border-2 border-[#000181]">
+                            {option.voters.map((voter, voterIndex) => (
+                              <div
+                                key={voter.id}
+                                className="grid grid-cols-[48px_1fr] border-b-2 border-[#000181] last:border-b-0"
+                              >
+                                <div className="flex min-h-14 items-center justify-center border-r-2 border-[#000181] bg-[#FDFEFF] font-latin text-xs font-bold">
+                                  {String(voterIndex + 1).padStart(2, "0")}
+                                </div>
+
+                                <div className="px-4 py-3">
+                                  <p className="text-sm font-black leading-6 tracking-[-0.035em] text-[#000181]">
+                                    {voter.generation}기 / {voter.name} / 뒷자리{" "}
+                                    {voter.phoneLast4}
+                                  </p>
+                                  <p className="mt-1 font-latin text-xs font-bold tracking-[-0.02em] text-[#000181]/45">
+                                    {formatDateTime(voter.createdAt)}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -356,7 +409,7 @@ export default function AdminPage() {
                 <section className="mt-8 border-2 border-[#000181] bg-[#D0FFA4] px-4 py-4">
                   <p className="text-sm font-black leading-7 tracking-[-0.035em]">
                     무효표 처리된 투표가 {summary.totalInvalidVotes}개 있습니다.
-                    위 집계에서는 무효표가 제외됩니다.
+                    위 집계와 투표자 목록에서는 무효표가 제외됩니다.
                   </p>
                 </section>
               )}

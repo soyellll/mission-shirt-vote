@@ -1,9 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+/* eslint-disable @next/next/no-img-element */
 
-type AdminOption = {
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+type ResultOption = {
   id: string;
   number: string;
   title: string;
@@ -12,130 +14,375 @@ type AdminOption = {
   percent: number;
 };
 
-type AdminSummary = {
-  pollClosesAtLabel: string;
-  isPollClosed: boolean;
-  totalSubmittedVotes: number;
-  totalValidVotes: number;
-  totalInvalidVotes: number;
-  options: AdminOption[];
-  lastUpdatedAt: string;
+type ImageOption = ResultOption & {
+  imageSrc: string;
 };
 
-const formatTime = (isoDate: string) => {
-  return new Intl.DateTimeFormat("ko-KR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(new Date(isoDate));
+type DisplayOption = ImageOption & {
+  displayPercent: number;
 };
 
-export default function AdminPage() {
-  const [pinInput, setPinInput] = useState("");
-  const [adminPin, setAdminPin] = useState("");
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [summary, setSummary] = useState<AdminSummary | null>(null);
+type ResultResponse = {
+  isOpen: boolean;
+  isPreview?: boolean;
+  message?: string;
+  totalValidVotes?: number;
+  options?: ResultOption[];
+  winners?: ResultOption[];
+  hasTie?: boolean;
+};
+
+type Phase = "loading" | "waiting" | "counting" | "drumroll" | "revealed";
+
+type RankedOption = ImageOption & {
+  rank: number;
+};
+
+const COLORS = ["#006EE9", "#000181", "#D0FFA4"];
+
+const sleep = (ms: number) => {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+};
+
+const getImageSrc = (id: string) => {
+  return `/${id}.jpg`;
+};
+
+const withImageSources = (options: ResultOption[]): ImageOption[] => {
+  return options.map((option) => ({
+    ...option,
+    imageSrc: getImageSrc(option.id),
+  }));
+};
+
+const normalizePercents = (values: number[]) => {
+  const sum = values.reduce((acc, value) => acc + Math.max(0, value), 0);
+
+  if (sum <= 0) {
+    return values.map(() => 0);
+  }
+
+  return values.map(
+    (value) => Math.round((Math.max(0, value) / sum) * 1000) / 10,
+  );
+};
+
+const makeFakePercents = (
+  options: ResultOption[],
+  frame: number,
+  totalFrames: number,
+) => {
+  const progress = frame / totalFrames;
+  const convergence = Math.min(1, Math.pow(progress, 2.35));
+  const leaderIndex = Math.floor(frame / 5) % Math.max(options.length, 1);
+
+  const fakeRaw = options.map((_, index) => {
+    const wave = Math.sin(frame * 0.68 + index * 1.95) * 9;
+    const boost = index === leaderIndex ? 24 : 0;
+    const chase = index === (leaderIndex + 1) % options.length ? 12 : 0;
+    const drop = index === (leaderIndex + 2) % options.length ? -4 : 0;
+
+    return 30 + wave + boost + chase + drop;
+  });
+
+  const fakePercents = normalizePercents(fakeRaw);
+  const finalPercents = options.map((option) => option.percent);
+
+  const mixed = fakePercents.map((fakePercent, index) => {
+    return fakePercent * (1 - convergence) + finalPercents[index] * convergence;
+  });
+
+  return normalizePercents(mixed);
+};
+
+const formatPercent = (value: number) => {
+  const rounded = Math.round(value * 10) / 10;
+
+  if (Number.isInteger(rounded)) {
+    return `${rounded}%`;
+  }
+
+  return `${rounded.toFixed(1)}%`;
+};
+
+const getSortedDisplayOptions = (options: DisplayOption[]) => {
+  return [...options].sort((a, b) => {
+    if (b.displayPercent !== a.displayPercent) {
+      return b.displayPercent - a.displayPercent;
+    }
+
+    return a.title.localeCompare(b.title, "ko");
+  });
+};
+
+const getFinalSortedOptions = (options: ImageOption[]) => {
+  return [...options].sort((a, b) => {
+    if (b.voteCount !== a.voteCount) {
+      return b.voteCount - a.voteCount;
+    }
+
+    return a.title.localeCompare(b.title, "ko");
+  });
+};
+
+const makeRankedOptions = (options: ImageOption[]): RankedOption[] => {
+  const sorted = getFinalSortedOptions(options);
+
+  let previousVoteCount: number | null = null;
+  let currentRank = 0;
+
+  return sorted.map((option, index) => {
+    if (previousVoteCount === null || option.voteCount !== previousVoteCount) {
+      currentRank = index + 1;
+    }
+
+    previousVoteCount = option.voteCount;
+
+    return {
+      ...option,
+      rank: currentRank,
+    };
+  });
+};
+
+function CandidateImage({
+  src,
+  alt,
+}: {
+  src: string;
+  alt: string;
+}) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return (
+      <div className="flex h-full min-h-44 items-center justify-center border-2 border-[#000181] bg-[#FDFEFF] px-4 py-8 text-center">
+        <p className="text-sm font-black leading-7 text-[#000181]/60">
+          이미지 준비중
+          <br />
+          {src.replace("/", "")}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full min-h-44 border-2 border-[#000181] bg-[#FDFEFF]">
+      <img
+        src={src}
+        alt={alt}
+        onError={() => setHasError(true)}
+        className="h-full w-full object-contain"
+      />
+    </div>
+  );
+}
+
+export default function RevealPage() {
+  const animationStartedRef = useRef(false);
+
+  const [phase, setPhase] = useState<Phase>("loading");
   const [errorMessage, setErrorMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [result, setResult] = useState<ResultResponse | null>(null);
+  const [displayOptions, setDisplayOptions] = useState<DisplayOption[]>([]);
+  const [isPreview, setIsPreview] = useState(false);
 
-  useEffect(() => {
-    const savedPin = window.sessionStorage.getItem("missionVoteAdminPin");
+  const imageOptions = useMemo(() => {
+    return withImageSources(result?.options ?? []);
+  }, [result]);
 
-    if (savedPin) {
-      setPinInput(savedPin);
-      setAdminPin(savedPin);
-      setIsUnlocked(true);
-    }
-  }, []);
+  const rankedOptions = useMemo(() => {
+    return makeRankedOptions(imageOptions);
+  }, [imageOptions]);
 
-  useEffect(() => {
-    if (!isUnlocked || !adminPin) {
-      return;
-    }
+  const winnerOptions = useMemo(() => {
+    const winnerIds = new Set((result?.winners ?? []).map((winner) => winner.id));
 
-    let ignore = false;
+    return imageOptions.filter((option) => winnerIds.has(option.id));
+  }, [imageOptions, result]);
 
-    const loadSummary = async () => {
-      try {
-        setIsLoading(true);
+  const hasTie = Boolean(result?.hasTie);
+  const totalValidVotes = result?.totalValidVotes ?? 0;
 
-        const response = await fetch("/api/admin/summary", {
-          method: "GET",
-          headers: {
-            "x-admin-pin": adminPin,
+  const fireConfetti = async () => {
+    try {
+      const confettiModule = await import("canvas-confetti");
+      const confetti = confettiModule.default;
+      const end = Date.now() + 3000;
+
+      const shoot = () => {
+        confetti({
+          particleCount: 85,
+          spread: 90,
+          startVelocity: 42,
+          scalar: 1,
+          colors: COLORS,
+          origin: {
+            x: Math.random() * 0.7 + 0.15,
+            y: Math.random() * 0.28 + 0.02,
           },
-          cache: "no-store",
+          disableForReducedMotion: true,
         });
 
-        const result = (await response.json().catch(() => null)) as
-          | (AdminSummary & { message?: string })
+        if (Date.now() < end) {
+          window.setTimeout(shoot, 250);
+        }
+      };
+
+      shoot();
+    } catch {
+      // 폭죽 라이브러리 로딩 실패 시 결과 화면은 그대로 보여준다.
+    }
+  };
+
+  useEffect(() => {
+    const loadResults = async () => {
+      try {
+        setPhase("loading");
+
+        const searchParams = new URLSearchParams(window.location.search);
+        const preview = searchParams.get("preview") === "1";
+        const adminPin = window.localStorage.getItem("missionVoteAdminPin");
+
+        setIsPreview(preview);
+
+        const response = await fetch(
+          preview ? "/api/results?preview=1" : "/api/results",
+          {
+            method: "GET",
+            cache: "no-store",
+            headers:
+              preview && adminPin
+                ? {
+                    "x-admin-pin": adminPin,
+                  }
+                : {},
+          },
+        );
+
+        const data = (await response.json().catch(() => null)) as
+          | ResultResponse
           | null;
 
         if (!response.ok) {
           throw new Error(
-            result?.message ?? "관리자 데이터를 불러오지 못했습니다.",
+            data?.message ?? "결과 정보를 불러오지 못했습니다.",
           );
         }
 
-        if (!ignore) {
-          setSummary(result);
-          setErrorMessage("");
+        if (!data?.isOpen) {
+          setMessage(
+            data?.message ??
+              "아직 결과 발표가 시작되지 않았습니다. 잠시만 기다려주세요.",
+          );
+          setResult(data);
+          setPhase("waiting");
+          return;
         }
+
+        setResult(data);
+        setDisplayOptions(
+          withImageSources(data.options ?? []).map((option) => ({
+            ...option,
+            displayPercent: 0,
+          })),
+        );
+        setPhase("counting");
       } catch (error) {
-        const message =
+        const nextMessage =
           error instanceof Error
             ? error.message
-            : "관리자 데이터를 불러오지 못했습니다.";
+            : "결과 정보를 불러오지 못했습니다.";
 
-        if (!ignore) {
-          setErrorMessage(message);
-        }
-      } finally {
-        if (!ignore) {
-          setIsLoading(false);
-        }
+        setErrorMessage(nextMessage);
+        setPhase("waiting");
       }
     };
 
-    loadSummary();
+    loadResults();
+  }, []);
 
-    const timerId = window.setInterval(loadSummary, 3000);
-
-    return () => {
-      ignore = true;
-      window.clearInterval(timerId);
-    };
-  }, [adminPin, isUnlocked]);
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    const nextPin = pinInput.trim();
-
-    if (!nextPin) {
-      setErrorMessage("관리자 PIN을 입력해주세요.");
+  useEffect(() => {
+    if (!result?.isOpen || !result.options || animationStartedRef.current) {
       return;
     }
 
-    window.sessionStorage.setItem("missionVoteAdminPin", nextPin);
-    setAdminPin(nextPin);
-    setIsUnlocked(true);
-    setErrorMessage("");
-  };
+    animationStartedRef.current = true;
 
-  const handleLogout = () => {
-    window.sessionStorage.removeItem("missionVoteAdminPin");
-    setPinInput("");
-    setAdminPin("");
-    setIsUnlocked(false);
-    setSummary(null);
-    setErrorMessage("");
-  };
+    const runAnimation = async () => {
+      const totalFrames = 64;
 
-  if (!isUnlocked) {
+      for (let frame = 0; frame <= totalFrames; frame += 1) {
+        const percents = makeFakePercents(
+          result.options ?? [],
+          frame,
+          totalFrames,
+        );
+
+        setDisplayOptions(
+          withImageSources(result.options ?? []).map((option, index) => ({
+            ...option,
+            displayPercent: percents[index] ?? 0,
+          })),
+        );
+
+        await sleep(145);
+      }
+
+      setDisplayOptions(
+        withImageSources(result.options ?? []).map((option) => ({
+          ...option,
+          displayPercent: option.percent,
+        })),
+      );
+
+      setPhase("drumroll");
+
+      await sleep(1400);
+
+      setPhase("revealed");
+
+      await fireConfetti();
+    };
+
+    runAnimation();
+  }, [result]);
+
+  const visibleOptions =
+    phase === "revealed"
+      ? rankedOptions.map((option) => ({
+          ...option,
+          displayPercent: option.percent,
+        }))
+      : getSortedDisplayOptions(displayOptions);
+
+  if (phase === "loading") {
     return (
       <main className="min-h-screen bg-[#FDFEFF] px-5 py-5 text-[#000181]">
-        <section className="mx-auto max-w-md">
+        <section className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-md flex-col justify-center">
+          <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
+            Result Reveal
+          </p>
+
+          <h1 className="mt-8 text-[54px] font-black leading-[1.18] tracking-[-0.08em]">
+            결과를
+            <br />
+            불러오는 중
+          </h1>
+
+          <p className="mt-8 text-sm font-bold leading-8 text-[#000181]/60">
+            잠시만 기다려주세요.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (phase === "waiting") {
+    return (
+      <main className="min-h-screen bg-[#FDFEFF] px-5 py-5 text-[#000181]">
+        <section className="mx-auto flex min-h-[calc(100vh-2.5rem)] max-w-md flex-col">
           <header className="flex items-start justify-between border-b-2 border-[#000181] pb-4">
             <Link
               href="/"
@@ -145,53 +392,24 @@ export default function AdminPage() {
             </Link>
 
             <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
-              Admin
+              Waiting
             </p>
           </header>
 
-          <section className="pt-12">
+          <section className="flex flex-1 flex-col justify-center">
             <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
-              Admin Check
+              Result
             </p>
 
-            <h1 className="mt-8 text-[52px] font-black leading-[1.16] tracking-[-0.08em] text-[#000181]">
-              관리자
+            <h1 className="mt-8 text-[54px] font-black leading-[1.18] tracking-[-0.08em]">
+              아직 결과 발표가
               <br />
-              페이지
+              시작되지 않았습니다.
             </h1>
 
-            <p className="mt-8 text-sm font-bold leading-8 tracking-[-0.035em] text-[#000181]/65">
-              투표 현황을 확인하려면 관리자 PIN을 입력해주세요.
+            <p className="mt-10 text-[16px] font-bold leading-8 text-[#000181]/70">
+              {errorMessage || message}
             </p>
-
-            <form onSubmit={handleSubmit} className="mt-10">
-              <div className="border-2 border-[#000181]">
-                <label className="block border-b-2 border-[#000181] bg-[#D0FFA4] px-4 py-4 text-sm font-black tracking-[-0.04em]">
-                  관리자 PIN
-                </label>
-
-                <input
-                  type="password"
-                  value={pinInput}
-                  onChange={(event) => setPinInput(event.target.value)}
-                  placeholder="PIN 입력"
-                  className="min-h-20 w-full bg-[#FDFEFF] px-4 text-2xl font-black tracking-[-0.04em] text-[#000181] outline-none placeholder:text-[#000181]/25"
-                />
-              </div>
-
-              {errorMessage && (
-                <div className="mt-5 border-2 border-[#000181] bg-[#D0FFA4] px-4 py-4 text-sm font-black leading-7 tracking-[-0.035em] text-[#000181]">
-                  {errorMessage}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                className="mt-8 block w-full border-2 border-[#000181] bg-[#006EE9] px-5 py-5 text-center text-lg font-black tracking-[-0.04em] text-[#FDFEFF] transition hover:bg-[#000181] active:translate-x-1 active:translate-y-1"
-              >
-                관리자 입장
-              </button>
-            </form>
           </section>
         </section>
       </main>
@@ -209,158 +427,202 @@ export default function AdminPage() {
             ← Home
           </Link>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]"
-          >
-            Logout
-          </button>
+          <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
+            {isPreview ? "Preview" : "Reveal"}
+          </p>
         </header>
 
-        <section className="pt-10">
-          <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
-            Live Vote
-          </p>
-
-          <h1 className="mt-8 text-[50px] font-black leading-[1.16] tracking-[-0.08em] text-[#000181]">
-            관리자
-            <br />
-            실시간 집계
-          </h1>
-
-          {errorMessage && (
-            <div className="mt-6 border-2 border-[#000181] bg-[#D0FFA4] px-4 py-4 text-sm font-black leading-7 tracking-[-0.035em] text-[#000181]">
-              {errorMessage}
-            </div>
-          )}
-
-          {!summary && !errorMessage && (
-            <div className="mt-10 border-2 border-[#000181] px-4 py-8 text-sm font-black leading-7 tracking-[-0.035em] text-[#000181]/60">
-              집계 데이터를 불러오는 중입니다.
-            </div>
-          )}
-
-          {summary && (
+        <section className="pt-8">
+          {phase !== "revealed" && (
             <>
-              <section className="mt-10 grid grid-cols-2 border-2 border-[#000181]">
-                <div className="border-r-2 border-[#000181] p-4">
-                  <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
-                    Valid
-                  </p>
-                  <p className="font-latin mt-4 text-[48px] font-bold leading-none tracking-[-0.08em]">
-                    {summary.totalValidVotes}
-                  </p>
-                  <p className="mt-2 text-xs font-bold text-[#000181]/45">
-                    유효표
-                  </p>
+              <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
+                Mission T-Shirt Final
+              </p>
+
+              <h1 className="mt-7 text-[48px] font-black leading-[1.16] tracking-[-0.08em]">
+                최종 데뷔를
+                <br />
+                향한 집계 중
+              </h1>
+
+              {isPreview && (
+                <div className="mt-7 border-2 border-[#000181] bg-[#D0FFA4] px-4 py-4 text-sm font-black leading-7">
+                  관리자 미리보기 화면입니다. 실제 결과 공개 상태와 상관없이
+                  연출을 확인할 수 있습니다.
+                </div>
+              )}
+
+              <div className="mt-8 border-2 border-[#000181]">
+                <div className="grid grid-cols-[104px_1fr] border-b-2 border-[#000181]">
+                  <div className="flex min-h-14 items-center border-r-2 border-[#000181] bg-[#D0FFA4] px-4 text-sm font-black">
+                    Phase
+                  </div>
+                  <div className="flex min-h-14 items-center px-4 text-sm font-black">
+                    {phase === "counting" && "엎치락뒤치락 집계 중"}
+                    {phase === "drumroll" && "최종 데뷔 발표 직전"}
+                  </div>
                 </div>
 
-                <div className="p-4">
-                  <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
+                <div className="grid grid-cols-[104px_1fr]">
+                  <div className="flex min-h-14 items-center border-r-2 border-[#000181] px-4 text-sm font-black">
                     Total
+                  </div>
+                  <div className="flex min-h-14 items-center px-4 text-sm font-black">
+                    유효표 {totalValidVotes}표
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {phase === "revealed" && (
+            <section>
+              <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
+                Final Debut
+              </p>
+
+              <h1 className="mt-7 text-[54px] font-black leading-[1.08] tracking-[-0.09em]">
+                최종
+                <br />
+                데뷔
+              </h1>
+
+              {winnerOptions.length === 0 ? (
+                <div className="mt-8 border-2 border-[#000181] px-4 py-8">
+                  <p className="text-lg font-black leading-8">
+                    아직 유효표가 없습니다.
                   </p>
-                  <p className="font-latin mt-4 text-[48px] font-bold leading-none tracking-[-0.08em]">
-                    {summary.totalSubmittedVotes}
-                  </p>
-                  <p className="mt-2 text-xs font-bold text-[#000181]/45">
-                    전체 제출
-                  </p>
                 </div>
-              </section>
-
-              <section className="mt-5 border-2 border-[#000181]">
-                <div className="grid grid-cols-[112px_1fr] border-b-2 border-[#000181]">
-                  <div className="flex min-h-16 items-center border-r-2 border-[#000181] bg-[#D0FFA4] px-4 text-sm font-black">
-                    상태
-                  </div>
-                  <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
-                    {summary.isPollClosed ? "투표 종료" : "투표 진행 중"}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[112px_1fr] border-b-2 border-[#000181]">
-                  <div className="flex min-h-16 items-center border-r-2 border-[#000181] px-4 text-sm font-black">
-                    종료 시간
-                  </div>
-                  <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
-                    {summary.pollClosesAtLabel}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-[112px_1fr]">
-                  <div className="flex min-h-16 items-center border-r-2 border-[#000181] px-4 text-sm font-black">
-                    마지막 갱신
-                  </div>
-                  <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
-                    {formatTime(summary.lastUpdatedAt)}
-                    {isLoading ? " 갱신 중..." : ""}
-                  </div>
-                </div>
-              </section>
-
-              <section className="mt-10 space-y-8">
-                {summary.options.map((option, index) => (
-                  <article key={option.id} className="border-2 border-[#000181]">
-                    <div className="grid grid-cols-[1fr_92px] border-b-2 border-[#000181]">
-                      <div className="px-4 py-5">
+              ) : (
+                <div className="mt-8 space-y-5">
+                  {winnerOptions.map((winner) => (
+                    <article
+                      key={winner.id}
+                      className="border-2 border-[#000181] bg-[#D0FFA4]"
+                    >
+                      <div className="border-b-2 border-[#000181] px-4 py-4">
                         <p className="font-latin text-xs font-bold uppercase tracking-[0.18em] text-[#006EE9]">
-                          Candidate {option.number}
+                          {hasTie ? "Co-Debut Winner" : "Debut Winner"}
                         </p>
 
-                        <h2 className="mt-4 text-[34px] font-black leading-[1.15] tracking-[-0.07em] text-[#000181]">
+                        <h2 className="mt-3 text-[42px] font-black leading-[1.08] tracking-[-0.08em]">
+                          {winner.title}
+                        </h2>
+                      </div>
+
+                      <div className="p-4">
+                        <div className="h-64">
+                          <CandidateImage
+                            src={winner.imageSrc}
+                            alt={winner.title}
+                          />
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              {hasTie && winnerOptions.length > 0 && (
+                <div className="mt-6 border-2 border-[#000181] bg-[#FDFEFF] px-4 py-4 text-sm font-black leading-8">
+                  동점 발생 시 공동 1위로 표시하고,
+                  <br />
+                  최종 진행 디자인은 담당자 확인 후 공지합니다.
+                </div>
+              )}
+            </section>
+          )}
+
+          {phase !== "revealed" && (
+            <section className="mt-9 space-y-5">
+              {visibleOptions.map((option, index) => {
+                const barColor = COLORS[index % COLORS.length];
+                const width =
+                  option.displayPercent <= 0
+                    ? "0%"
+                    : `${option.displayPercent}%`;
+
+                return (
+                  <article
+                    key={option.id}
+                    className="border-2 border-[#000181] bg-[#FDFEFF]"
+                  >
+                    <div className="grid grid-cols-[minmax(0,1fr)_118px] border-b-2 border-[#000181]">
+                      <div className="px-4 py-4">
+                        <p className="font-latin text-xs font-bold uppercase tracking-[0.18em] text-[#006EE9]">
+                          Live Rank
+                        </p>
+
+                        <h2 className="mt-3 text-[30px] font-black leading-[1.15] tracking-[-0.07em]">
                           {option.title}
                         </h2>
                       </div>
 
-                      <div className="grid place-items-center border-l-2 border-[#000181] bg-[#006EE9]">
-                        <p className="font-latin text-[42px] font-bold leading-none tracking-[-0.08em] text-[#FDFEFF]">
-                          {option.voteCount}
+                      <div className="grid place-items-center border-l-2 border-[#000181] bg-[#006EE9] px-2">
+                        <p className="font-latin whitespace-nowrap text-center text-[28px] font-bold leading-none tracking-[-0.08em] text-[#FDFEFF]">
+                          {formatPercent(option.displayPercent)}
                         </p>
                       </div>
                     </div>
 
                     <div className="p-4">
-                      <div className="h-6 border-2 border-[#000181]">
+                      <div className="h-8 border-2 border-[#000181] bg-[#FDFEFF]">
                         <div
-                          className={[
-                            "h-full bg-[#006EE9]",
-                            index === 0 ? "bg-[#006EE9]" : "",
-                            index === 1 ? "bg-[#000181]" : "",
-                            index === 2 ? "bg-[#D0FFA4]" : "",
-                          ].join(" ")}
+                          className="h-full transition-all duration-150"
                           style={{
-                            width:
-                              option.voteCount === 0
-                                ? "0%"
-                                : `${Math.max(option.percent, 4)}%`,
+                            width,
+                            backgroundColor: barColor,
                           }}
                         />
                       </div>
-
-                      <div className="mt-4 flex items-center justify-between">
-                        <p className="text-sm font-black leading-7 tracking-[-0.035em] text-[#000181]/65">
-                          {option.description}
-                        </p>
-
-                        <p className="font-latin shrink-0 text-2xl font-bold tracking-[-0.06em] text-[#000181]">
-                          {option.percent}%
-                        </p>
-                      </div>
                     </div>
                   </article>
-                ))}
-              </section>
+                );
+              })}
+            </section>
+          )}
 
-              {summary.totalInvalidVotes > 0 && (
-                <section className="mt-8 border-2 border-[#000181] bg-[#D0FFA4] px-4 py-4">
-                  <p className="text-sm font-black leading-7 tracking-[-0.035em]">
-                    무효표 처리된 투표가 {summary.totalInvalidVotes}개 있습니다.
-                    위 집계에서는 무효표가 제외됩니다.
-                  </p>
-                </section>
-              )}
-            </>
+          {phase === "drumroll" && (
+            <section className="mt-10 border-y-2 border-[#000181] py-8 text-center">
+              <p className="font-latin text-sm font-bold uppercase tracking-[0.18em] text-[#006EE9]">
+                Final Debut
+              </p>
+              <p className="mt-6 text-[42px] font-black leading-[1.2] tracking-[-0.08em]">
+                최종 데뷔할
+                <br />
+                티셔츠는?
+              </p>
+            </section>
+          )}
+
+          {phase === "revealed" && (
+            <section className="mt-8">
+              <div className="border-y-2 border-[#000181]">
+                {rankedOptions.map((option) => (
+                  <div
+                    key={option.id}
+                    className="grid grid-cols-[58px_minmax(0,1fr)_86px] border-b-2 border-[#000181] last:border-b-0"
+                  >
+                    <div className="flex min-h-16 items-center justify-center border-r-2 border-[#000181] font-latin text-sm font-bold">
+                      {option.rank}위
+                    </div>
+
+                    <div className="flex min-h-16 flex-col justify-center px-3">
+                      <p className="text-sm font-black leading-5">
+                        {option.title}
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-[#000181]/45">
+                        {option.voteCount}표
+                      </p>
+                    </div>
+
+                    <div className="flex min-h-16 items-center justify-center border-l-2 border-[#000181] px-2 font-latin text-lg font-bold">
+                      {formatPercent(option.percent)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
         </section>
       </section>

@@ -24,6 +24,8 @@ type AdminOption = {
 type AdminSummary = {
   pollClosesAtLabel: string;
   isPollClosed: boolean;
+  resultsPublic: boolean;
+  revealStartedAt: string | null;
   totalSubmittedVotes: number;
   totalValidVotes: number;
   totalInvalidVotes: number;
@@ -39,7 +41,11 @@ const formatTime = (isoDate: string) => {
   }).format(new Date(isoDate));
 };
 
-const formatDateTime = (isoDate: string) => {
+const formatDateTime = (isoDate?: string | null) => {
+  if (!isoDate) {
+    return "-";
+  }
+
   return new Intl.DateTimeFormat("ko-KR", {
     month: "2-digit",
     day: "2-digit",
@@ -55,9 +61,10 @@ export default function AdminPage() {
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRevealSaving, setIsRevealSaving] = useState(false);
 
   useEffect(() => {
-    const savedPin = window.sessionStorage.getItem("missionVoteAdminPin");
+    const savedPin = window.localStorage.getItem("missionVoteAdminPin");
 
     if (savedPin) {
       setPinInput(savedPin);
@@ -66,6 +73,27 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadSummary = async (pin: string) => {
+    const response = await fetch("/api/admin/summary", {
+      method: "GET",
+      headers: {
+        "x-admin-pin": pin,
+      },
+      cache: "no-store",
+    });
+
+    const result = (await response.json().catch(() => null)) as
+      | (AdminSummary & { message?: string })
+      | null;
+
+    if (!response.ok) {
+      throw new Error(result?.message ?? "관리자 데이터를 불러오지 못했습니다.");
+    }
+
+    setSummary(result);
+    setErrorMessage("");
+  };
+
   useEffect(() => {
     if (!isUnlocked || !adminPin) {
       return;
@@ -73,32 +101,11 @@ export default function AdminPage() {
 
     let ignore = false;
 
-    const loadSummary = async () => {
+    const run = async () => {
       try {
         setIsLoading(true);
 
-        const response = await fetch("/api/admin/summary", {
-          method: "GET",
-          headers: {
-            "x-admin-pin": adminPin,
-          },
-          cache: "no-store",
-        });
-
-        const result = (await response.json().catch(() => null)) as
-          | (AdminSummary & { message?: string })
-          | null;
-
-        if (!response.ok) {
-          throw new Error(
-            result?.message ?? "관리자 데이터를 불러오지 못했습니다.",
-          );
-        }
-
-        if (!ignore) {
-          setSummary(result);
-          setErrorMessage("");
-        }
+        await loadSummary(adminPin);
       } catch (error) {
         const message =
           error instanceof Error
@@ -115,9 +122,9 @@ export default function AdminPage() {
       }
     };
 
-    loadSummary();
+    run();
 
-    const timerId = window.setInterval(loadSummary, 3000);
+    const timerId = window.setInterval(run, 3000);
 
     return () => {
       ignore = true;
@@ -135,19 +142,69 @@ export default function AdminPage() {
       return;
     }
 
-    window.sessionStorage.setItem("missionVoteAdminPin", nextPin);
+    window.localStorage.setItem("missionVoteAdminPin", nextPin);
     setAdminPin(nextPin);
     setIsUnlocked(true);
     setErrorMessage("");
   };
 
   const handleLogout = () => {
-    window.sessionStorage.removeItem("missionVoteAdminPin");
+    window.localStorage.removeItem("missionVoteAdminPin");
     setPinInput("");
     setAdminPin("");
     setIsUnlocked(false);
     setSummary(null);
     setErrorMessage("");
+  };
+
+  const updateRevealStatus = async (action: "start" | "hide") => {
+    if (!adminPin) {
+      setErrorMessage("관리자 PIN이 없습니다. 다시 로그인해주세요.");
+      return;
+    }
+
+    const confirmMessage =
+      action === "start"
+        ? "결과 발표를 시작할까요? /reveal 페이지가 일반 공개됩니다."
+        : "결과 공개를 중지할까요? /reveal 페이지가 다시 대기 화면으로 돌아갑니다.";
+
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      setIsRevealSaving(true);
+
+      const response = await fetch("/api/admin/reveal", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-pin": adminPin,
+        },
+        body: JSON.stringify({ action }),
+      });
+
+      const result = (await response.json().catch(() => null)) as
+        | { message?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ?? "결과 발표 설정을 저장하지 못했습니다.",
+        );
+      }
+
+      await loadSummary(adminPin);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "결과 발표 설정을 저장하지 못했습니다.";
+
+      setErrorMessage(message);
+    } finally {
+      setIsRevealSaving(false);
+    }
   };
 
   if (!isUnlocked) {
@@ -179,7 +236,7 @@ export default function AdminPage() {
             </h1>
 
             <p className="mt-8 text-sm font-bold leading-8 tracking-[-0.035em] text-[#000181]/65">
-              투표 현황을 확인하려면 관리자 PIN을 입력해주세요.
+              투표 현황과 결과 발표를 관리하려면 관리자 PIN을 입력해주세요.
             </p>
 
             <form onSubmit={handleSubmit} className="mt-10">
@@ -261,7 +318,59 @@ export default function AdminPage() {
 
           {summary && (
             <>
-              <section className="mt-10 grid grid-cols-2 border-2 border-[#000181]">
+              <section className="mt-10 border-2 border-[#000181]">
+                <div className="grid grid-cols-[112px_1fr] border-b-2 border-[#000181]">
+                  <div className="flex min-h-16 items-center border-r-2 border-[#000181] bg-[#D0FFA4] px-4 text-sm font-black">
+                    결과 공개
+                  </div>
+
+                  <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
+                    {summary.resultsPublic ? "공개 중" : "대기 중"}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[112px_1fr] border-b-2 border-[#000181]">
+                  <div className="flex min-h-16 items-center border-r-2 border-[#000181] px-4 text-sm font-black">
+                    발표 시작
+                  </div>
+
+                  <div className="flex min-h-16 items-center px-4 text-sm font-black leading-7 tracking-[-0.035em]">
+                    {summary.revealStartedAt
+                      ? formatDateTime(summary.revealStartedAt)
+                      : "-"}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 border-t-0">
+                  <Link
+                    href="/reveal?preview=1"
+                    target="_blank"
+                    className="flex min-h-16 items-center justify-center border-r-2 border-[#000181] bg-[#FDFEFF] px-4 text-center text-sm font-black tracking-[-0.035em] text-[#000181] transition hover:bg-[#D0FFA4]"
+                  >
+                    결과 발표 미리보기
+                  </Link>
+
+                  <button
+                    type="button"
+                    disabled={isRevealSaving}
+                    onClick={() => updateRevealStatus("start")}
+                    className="min-h-16 bg-[#006EE9] px-4 text-sm font-black tracking-[-0.035em] text-[#FDFEFF] transition hover:bg-[#000181] disabled:opacity-50"
+                  >
+                    {isRevealSaving ? "저장 중..." : "결과 발표 시작"}
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isRevealSaving}
+                  onClick={() => updateRevealStatus("hide")}
+                  className="min-h-14 w-full border-t-2 border-[#000181] bg-[#FDFEFF] px-4 text-sm font-black tracking-[-0.035em] text-[#000181] transition hover:bg-[#D0FFA4] disabled:opacity-50"
+                >
+                  결과 공개 중지
+                </button>
+              </section>
+
+              <section className="mt-8 grid grid-cols-2 border-2 border-[#000181]">
                 <div className="border-r-2 border-[#000181] p-4">
                   <p className="font-latin text-xs font-bold uppercase tracking-[0.16em] text-[#006EE9]">
                     Valid

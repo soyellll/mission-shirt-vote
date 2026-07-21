@@ -391,7 +391,7 @@ export default function RevealPage() {
                   key={option.id}
                   className="border-2 border-[#000181] bg-[#FDFEFF]"
                 >
-                  <div className="grid grid-cols-[1fr_82px] border-b-2 border-[#000181]">
+                  <div className="grid grid-cols-[minmax(0,1fr)_118px] border-b-2 border-[#000181]">
                     <div className="px-4 py-4">
                       <p className="font-latin text-xs font-bold uppercase tracking-[0.18em] text-[#006EE9]">
                         Candidate {option.number}
@@ -403,7 +403,7 @@ export default function RevealPage() {
                     </div>
 
                     <div className="grid place-items-center border-l-2 border-[#000181] bg-[#006EE9]">
-                      <p className="font-latin text-[34px] font-bold leading-none tracking-[-0.08em] text-[#FDFEFF]">
+                      <p className="font-latin whitespace-nowrap text-center text-[28px] font-bold leading-none tracking-[-0.08em] text-[#FDFEFF]">
                         {formatPercent(option.displayPercent)}
                       </p>
                     </div>

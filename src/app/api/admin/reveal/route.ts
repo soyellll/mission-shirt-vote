@@ -7,6 +7,19 @@ type RevealRequestBody = {
   action?: "start" | "hide";
 };
 
+type PollSettingsUpsert = {
+  id: number;
+  results_public: boolean;
+  reveal_started_at: string | null;
+  updated_at: string;
+};
+
+type PollSettingsResponse = {
+  results_public: boolean;
+  reveal_started_at: string | null;
+  updated_at: string | null;
+};
+
 const getAdminPin = () => {
   return process.env.ADMIN_PIN;
 };
@@ -36,7 +49,7 @@ const readSettings = async () => {
       reveal_started_at: null,
       updated_at: null,
     }
-  );
+  ) as PollSettingsResponse;
 };
 
 export async function GET(request: Request) {
@@ -84,22 +97,21 @@ export async function POST(request: Request) {
     );
   }
 
+  if (body.action !== "start" && body.action !== "hide") {
+    return NextResponse.json(
+      { message: "결과 발표 동작이 올바르지 않습니다." },
+      { status: 400 },
+    );
+  }
+
   const now = new Date().toISOString();
 
-  const nextSettings =
-    body.action === "hide"
-      ? {
-          id: 1,
-          results_public: false,
-          reveal_started_at: null,
-          updated_at: now,
-        }
-      : {
-          id: 1,
-          results_public: true,
-          reveal_started_at: now,
-          updated_at: now,
-        };
+  const nextSettings: PollSettingsUpsert = {
+    id: 1,
+    results_public: body.action === "start",
+    reveal_started_at: body.action === "start" ? now : null,
+    updated_at: now,
+  };
 
   const { data, error } = await supabaseAdmin
     .from("poll_settings")
@@ -116,9 +128,11 @@ export async function POST(request: Request) {
     );
   }
 
+  const settings = data as PollSettingsResponse;
+
   return NextResponse.json({
-    resultsPublic: data.results_public,
-    revealStartedAt: data.reveal_started_at,
-    updatedAt: data.updated_at,
+    resultsPublic: settings.results_public,
+    revealStartedAt: settings.reveal_started_at,
+    updatedAt: settings.updated_at,
   });
 }
